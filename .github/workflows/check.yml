@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each Quillo release the extension supports.
+        quillo: [v0.6.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Quillo ${{ matrix.quillo }}
+        run: |
+          a=quillo-${{ matrix.quillo }}-x86_64-unknown-linux-gnu
+          base=https://github.com/quillolang/quillo/releases/download/${{ matrix.quillo }}
+          curl -fsSLO "$base/$a.tar.gz"
+          curl -fsSLO "$base/$a.tar.gz.sha256"
+          sha256sum -c "$a.tar.gz.sha256"
+          tar xzf "$a.tar.gz"
+          echo "QUILLO_BIN=$PWD/$a/quillo" >> "$GITHUB_ENV"
+          "$PWD/$a/quillo" --version
+      - run: google-chrome --version
+      - name: Unit tests
+        run: npm test
+      - name: In Chrome, on the fixture app
+        run: npm run test:browser
+        env:
+          CHROME_FLAGS: --no-sandbox
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quillo-devtools-${{ matrix.quillo }}
+          path: |
+            dist/
+            tests/out/

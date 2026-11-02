@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Quillo DevTools",
+  "version": "0.1.0",
+  "description": "A Quillo panel in the browser's developer tools: the page's components, their props and state, server fn calls, live updates, errors and the server's health.",
+  "homepage_url": "https://github.com/quillolang/devtools",
+  "minimum_chrome_version": "111",
+  "icons": { "16": "icons/quillo-16.png", "32": "icons/quillo-32.png", "48": "icons/quillo-48.png", "128": "icons/quillo-128.png" },
+  "devtools_page": "devtools.html",
+  "permissions": ["debugger"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["page/main.js"], "run_at": "document_start", "world": "MAIN" },
+    { "matches": ["<all_urls>"], "js": ["page/bridge.js"], "run_at": "document_start" }
+  ]
+}

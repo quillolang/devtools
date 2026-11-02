@@ -1,0 +1,13 @@
+// Tasks in the database, for a live state to follow.
+
+type Task = { id: int, text: str, done: int }
+
+server fn list_tasks() -> list<Task> with db =
+    db.query("select id, text, done from tasks order by id")
+
+server fn add_task(text: str) -> list<Task> ! str with db {
+    let t = trim(text)
+    if t == "" { return err("a task needs some text") }
+    db.exec("insert into tasks (text) values (?)", t)?
+    list_tasks()
+}

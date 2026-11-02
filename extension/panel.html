@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quillo</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header class="bar">
+  <img src="icons/quillo-32.png" alt="" width="16" height="16">
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="components" aria-selected="true">Components</button>
+    <button role="tab" data-tab="calls">Calls</button>
+    <button role="tab" data-tab="live">Live</button>
+    <button role="tab" data-tab="errors">Errors <span class="badge" id="error-count" hidden></span></button>
+    <button role="tab" data-tab="server">Server</button>
+  </nav>
+  <span class="mode" id="mode"></span>
+</header>
+
+<main>
+  <section id="components" class="tab split" role="tabpanel">
+    <div class="side">
+      <div class="tools">
+        <input type="search" id="find" placeholder="Find a component" aria-label="Find a component">
+        <label title="Reads each component's state as it is now, through the browser's debugger: the browser shows a bar while it is on"><input type="checkbox" id="current"> Current state</label>
+      </div>
+      <p class="note" id="state-note"></p>
+      <ul class="tree" id="tree" role="tree" aria-label="Components"></ul>
+    </div>
+    <div class="detail" id="detail"><p class="empty">Pick a component.</p></div>
+  </section>
+
+  <section id="calls" class="tab split" role="tabpanel" hidden>
+    <div class="side wide">
+      <div class="tools">
+        <input type="search" id="find-call" placeholder="Filter by server fn" aria-label="Filter calls">
+        <button id="clear-calls">Clear</button>
+      </div>
+      <table class="list" id="call-list">
+        <thead><tr><th>Server fn</th><th>Arguments</th><th>Answer</th><th class="num">ms</th><th class="num">Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="note">Server fn calls, as the Network panel records them: only those made while the developer tools are open.</p>
+    </div>
+    <div class="detail" id="call-detail"><p class="empty">Pick a call.</p></div>
+  </section>
+
+  <section id="live" class="tab" role="tabpanel" hidden>
+    <div class="tools">
+      <span id="follows" class="note"></span>
+      <button id="clear-live">Clear</button>
+    </div>
+    <table class="list" id="live-list">
+      <thead><tr><th>Time</th><th>Socket</th><th></th><th>What</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="errors" class="tab" role="tabpanel" hidden>
+    <div class="tools">
+      <span id="counts" class="note"></span>
+      <button id="clear-errors">Clear</button>
+    </div>
+    <ul class="errors" id="error-list"></ul>
+  </section>
+
+  <section id="server" class="tab" role="tabpanel" hidden>
+    <div class="tools">
+      <span id="origin" class="note"></span>
+      <button id="refresh-server">Refresh</button>
+    </div>
+    <div id="server-body"></div>
+  </section>
+</main>
+
+<script type="module" src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+// Components with each kind of state: plain, a map with a decimal, live, and an
+// answer from a server fn; one inside another; one the browser makes; an error.
+
+use lib/tasks.qwe
+
+server fn slow_echo(x: str) -> str {
+    sleep(200)
+    `echo ${x}`
+}
+
+server fn refuse(x: str) -> str ! str = err(`no ${x}`)
+
+component Inner(value: int) {
+    state clicks = 0
+    <p.inner @click={() => { clicks = clicks + 1 }}>inner {value} / {clicks}</p>
+}
+
+component Counter(start: int = 0, label: str = "count") {
+    state n = start
+    state note = { kind: "probe", tags: ["a", "b"], price: dec("12.50") }
+    state items = live(list_tasks)
+    state echoed = ""
+    state extra = false
+    <div.counter>
+        <button.inc @click={() => { n = n + 1 }}>{label}: {n}</button>
+        <Inner value={n}/>
+        <button.echo @click={() => { echoed = slow_echo(`n=${n}`) }}>echo</button>
+        <button.refuse @click={() => { echoed = refuse("way") ?? "refused" }}>refuse</button>
+        <span.echoed>{echoed}</span>
+        <button.boom @click={() => { let l = [1, 2]; n = l[5] + 1 }}>boom</button>
+        <button.more @click={() => { extra = !extra }}>more</button>
+        {extra && <Inner value={99}/>}
+        <span.count>{items == null ? "?" : len(items)}</span>
+    </div>
+}

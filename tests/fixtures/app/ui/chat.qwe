@@ -1,0 +1,14 @@
+// A channel: what a page sends, the server sends to every page in it.
+
+channel.on("room", (msg, peer) => {
+    channel.broadcast("room", { from: peer.id, text: msg.text })
+})
+
+component Chat() {
+    state last = ""
+    let room = channel.open("room", (m) => { last = m.text })
+    <div.chat>
+        <button.say @click={() => room.send({ text: "hello" })}>say</button>
+        <span.last>{last}</span>
+    </div>
+}

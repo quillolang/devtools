@@ -1,0 +1,16 @@
+{
+  "name": "@quillolang/devtools",
+  "version": "0.1.0",
+  "description": "Quillo DevTools: a browser extension for Quillo pages",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:quillolang/devtools",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test 'tests/unit/*.test.mjs'",
+    "test:browser": "node --test --test-concurrency=1 'tests/browser/*.test.mjs'",
+    "coverage": "rm -rf .coverage && NODE_V8_COVERAGE=.coverage node --test 'tests/unit/*.test.mjs' && NODE_V8_COVERAGE=.coverage node --test --test-concurrency=1 'tests/browser/*.test.mjs' && node scripts/coverage.mjs .coverage",
+    "package": "node scripts/package.mjs"
+  }
+}

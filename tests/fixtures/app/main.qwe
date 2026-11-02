@@ -1,0 +1,23 @@
+// The app the browser tests run: one of each thing the panel shows.
+//
+//   quillo run main.qwe --port 8080      then open http://127.0.0.1:8080
+
+db.open("app.db")
+db.migrate("migrations")
+
+use lib/tasks.qwe
+use ui/probe.qwe
+use ui/chat.qwe
+
+route GET / =
+    <html><head><title>probe</title></head><body>
+        <Counter start={3} label="clicks"/>
+        <div><Counter start={10}/></div>
+    </body></html>
+
+// No component: Quillo, but nothing runs in the browser.
+route GET /plain =
+    <html><head><title>plain</title></head><body><p>No component here.</p></body></html>
+
+route GET /chat =
+    <html><head><title>chat</title></head><body><Chat/></body></html>
