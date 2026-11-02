@@ -18,11 +18,14 @@
 export const GROUP = "quillo-devtools";
 const WANT = ["Inst", "Live", "toJSON", "untagDeep"];
 
-// Functions the runtime puts on the page, any one of which leads into its closure.
+// Functions the runtime puts on the page, any one of which leads into its closure. Since
+// Quillo 0.7 they are under one key, `window[Symbol.for("quillo")]`; before, a name each.
 const ENTRIES = [
   "window.__quillo_resume",
   "window.quillo && window.quillo.rpc",
   "window.__quillo_rt && Object.values(window.__quillo_rt).find((f) => typeof f === 'function')",
+  "window[Symbol.for('quillo')] && window[Symbol.for('quillo')].resume",
+  "window[Symbol.for('quillo')] && window[Symbol.for('quillo')].rt && Object.values(window[Symbol.for('quillo')].rt).find((f) => typeof f === 'function')",
 ];
 
 export async function runtime(send) {

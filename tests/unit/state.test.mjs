@@ -13,7 +13,7 @@ function protocol({ resume = "function", entry = "window.__quillo_resume", scope
     if (throws === method) throw new Error("Target closed");
     switch (method) {
       case "Runtime.evaluate": {
-        if (params.expression.startsWith("window.")) return { result: params.expression === entry ? { type: resume, objectId: "fn" } : { type: "undefined" } };
+        if (params.expression.startsWith("window")) return { result: params.expression === entry ? { type: resume, objectId: "fn" } : { type: "undefined" } };
         const name = params.expression.match(/^typeof (\w+) ===/)[1];
         return { result: globals.includes(name) ? { type: "function", objectId: `global:${name}` } : { type: "undefined" } };
       }

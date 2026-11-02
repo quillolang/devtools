@@ -20,8 +20,11 @@ export function scan() {
   const globals = Object.keys(window).filter((k) => /^(__quillo|quillo)/.test(k)).sort();
   // Quillo's: an island, a script of its, or a global it sets (`__quillo_pf`, from the
   // prefetching script every page of its has).
-  const quillo = all.length > 0 || scripts.some((s) => s.includes("/_quillo/")) || globals.length > 0;
-  const g = (k) => (Object.prototype.hasOwnProperty.call(window, k) ? window[k] : undefined);
+  // Since Quillo 0.7 what it shares with the page is under one key, not a name each.
+  const shared = window[Symbol.for("quillo")] || null;
+  const quillo = all.length > 0 || scripts.some((s) => s.includes("/_quillo/")) || globals.length > 0 || !!shared;
+  const old = { __quillo_booted: "booted", __quilloResumed: "resumed", __quilloRemade: "remade" };
+  const g = (k) => (shared && old[k] && old[k] in shared ? shared[old[k]] : Object.prototype.hasOwnProperty.call(window, k) ? window[k] : undefined);
   return {
     quillo,
     url: location.href,

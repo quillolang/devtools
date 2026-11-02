@@ -31,6 +31,10 @@ const NAME = "Quillo DevTools";
 const skip = !findChrome() ? "no Chrome (set CHROME)" : !quilloVersion() ? "no quillo (set QUILLO_BIN)" : false;
 
 const isolated = (p) => p.contexts.filter((c) => c.auxData && c.auxData.type === "isolated" && c.name === NAME).pop();
+// Whether the runtime has started: a name before Quillo 0.7, a field of its key since.
+const BOOTED = "!!window.__quillo_booted || !!(window[Symbol.for('quillo')] || {}).booted";
+// How a page's channels connect: a name before Quillo 0.7, a field of its key since.
+const VIA = "window.__quilloChannelVia || (window[Symbol.for('quillo')] || {}).via";
 const heard = async (p, after = 0) => p.evaluate(`__quilloDevtools.since(${after})`, { contextId: isolated(p).id });
 const click = (p, sel) => p.evaluate(`document.querySelector(${JSON.stringify(sel)}).click()`);
 const rpc = (url, name, args) => fetch(`${url}/_quillo/rpc/${name}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(args) }).then((r) => r.json());
@@ -44,7 +48,7 @@ for (const watch of [false, true]) {
       app = await start({ watch, describe: !watch, args: watch ? [] : ["--no-wt"] });
       chrome = await launch({ extension: EXT });
       page = await chrome.page(app.url + "/");
-      await until(() => page.evaluate("!!window.__quillo_booted"), 8000, "Quillo to start");
+      await until(() => page.evaluate(BOOTED), 8000, "Quillo to start");
     });
     after(async () => { if (chrome) await chrome.close(); if (app) app.stop(); });
 
@@ -74,7 +78,8 @@ for (const watch of [false, true]) {
       assert.deepEqual(s.islands.map((x) => [x.name, x.depth, x.parent]), [["Counter", 0, -1], ["Inner", 1, 0], ["Counter", 0, -1], ["Inner", 1, 2]]);
       assert.ok(s.islands.every((x) => x.resumed && x.server));
       assert.deepEqual(s.islands.map((x) => x.live), [true, false, true, false]);
-      assert.ok(s.globals.includes("__quillo_booted"));
+      // Quillo 0.7 shares what it has with the page under one key, and adds no name of its own.
+      assert.ok(s.globals.includes("__quillo_booted") || !s.globals.some((g) => g.startsWith("__quillo_")));
       const first = await page.evaluate(call(island, 0));
       assert.equal(JSON.parse(first.state).n, 3);
       assert.deepEqual(JSON.parse(first.props), { start: 3, label: "clicks" });
@@ -163,11 +168,11 @@ for (const watch of [false, true]) {
 
     test("a channel's messages are heard over a WebSocket, and not over WebTransport", async () => {
       const chat = await chrome.page(app.url + "/chat");
-      await until(() => chat.evaluate("!!window.__quillo_booted"), 5000, "the chat");
-      await until(() => chat.evaluate("!!window.__quilloChannelVia"), 5000, "the channel's connection");
+      await until(() => chat.evaluate(BOOTED), 5000, "the chat");
+      await until(() => chat.evaluate(`!!(${VIA})`), 5000, "the channel's connection");
       await click(chat, "button.say");
       await until(async () => (await chat.evaluate("document.querySelector('.last').textContent")) === "hello", 5000, "the message back");
-      const via = await chat.evaluate("window.__quilloChannelVia");
+      const via = await chat.evaluate(VIA);
       const lines = (await heard(chat)).events.filter((e) => e.path === "/_quillo/wt").map(describeFrame).map((d) => [d.dir, d.what, d.channel]);
       if (via === "websocket") {
         assert.equal(watch, false);
@@ -181,7 +186,7 @@ for (const watch of [false, true]) {
 
     test("props are mapped to where they come from, and a component's states and lets to what they read", async () => {
       const fam = await chrome.page(app.url + "/family");
-      await until(() => fam.evaluate("!!window.__quillo_booted"), 5000, "the family page");
+      await until(() => fam.evaluate(BOOTED), 5000, "the family page");
       const send = (m, p) => fam.send(m, p);
       const s = await fam.evaluate(call(scan));
       assert.deepEqual(s.islands.map((x) => x.name), ["Grand", "Parent", "Child", "Leaf", "Leaf", "Parent", "Child", "Pattern", "Still"]);
@@ -291,7 +296,7 @@ for (const watch of [false, true]) {
       await panel.evaluate("document.querySelector('[data-tab=live]').click()");
       await until(() => panel.evaluate("/Follows db:tasks/.test(document.getElementById('follows').textContent)"), 3000, "what the page follows");
       await page.go(app.url + "/");
-      await until(() => page.evaluate("!!window.__quillo_booted"), 5000, "Quillo again");
+      await until(() => page.evaluate(BOOTED), 5000, "Quillo again");
       // What came after the separator: the new page's socket, then the change.
       const afterReload = "(document.getElementById('live-list').textContent.split('The page loaded again')[1] || '')";
       await until(() => panel.evaluate(`${afterReload}.includes('follows')`), 5000, "the new page's socket");
