@@ -8,6 +8,7 @@ import { parse, show, kind, opens, typed, keyText, Dec, Big, Err, PropRef } from
 import { fromHar, rpcName, flags } from "./lib/calls.js";
 import { describe } from "./lib/live.js";
 import { readState, setState } from "./lib/state.js";
+import { readMapping } from "./lib/mapping.js";
 import { debuggerFor } from "./lib/debugger.js";
 
 const dt = chrome.devtools;
@@ -40,6 +41,7 @@ const S = {
   pickedName: null,
   data: null,          // `island(picked)`
   current: null,       // `readState`'s answer, while "Current state" is on
+  map: null,           // `readMapping`'s for the picked component, then too
   dbg: null,
   calls: [],
   pickedCall: -1,
@@ -146,7 +148,10 @@ async function tick() {
     // The page changed under the pick: find the island of that name again.
     if (!S.data || S.data.name !== S.pickedName) { S.picked = -1; S.data = null; }
   }
-  if (S.dbg && S.dbg.attached && S.page && S.page.quillo) S.current = await readState(S.dbg.send);
+  if (S.dbg && S.dbg.attached && S.page && S.page.quillo) {
+    S.current = await readState(S.dbg.send);
+    S.map = S.picked >= 0 ? await readMapping(S.dbg.send, S.picked) : null;
+  } else S.map = null;
   await drain();
   drawMode();
   drawTree();
@@ -209,7 +214,8 @@ function drawDetail(force) {
   const box = $("detail");
   const x = S.page && S.page.quillo && S.page.islands[S.picked];
   const cur = x ? currentOf(x.i) : null;
-  const key = JSON.stringify([x, S.data, cur, S.editing, S.current && !S.current.ok && S.current.why]);
+  const mapped = x && cur && S.map && S.map.ok && S.map.index === x.i && S.map.name === x.name ? S.map : null;
+  const key = JSON.stringify([x, S.data, cur, mapped, S.editing, S.current && !S.current.ok && S.current.why]);
   if (!force && (key === S.drawn.detail || S.editing)) return;
   S.drawn.detail = key;
   box.replaceChildren();
@@ -218,6 +224,9 @@ function drawDetail(force) {
   const on = !!(S.dbg && S.dbg.attached);
   const status = !x.resumed ? "Not taken up yet: the browser has not run its code, which it does when someone reaches for it. Its state is the server's."
     : cur ? "Running. Props and state as they are now."
+    // Read, and not among the components: nothing could change it (no handler, live
+    // state or timer), so the browser let its code go once it was on the page.
+    : on && S.current && S.current.ok ? "Taken up, and nothing in the browser can change it (no handler, live state or timer), so the browser let its code go: the page shows it as it will stay. Below is what the server rendered it with."
     : !x.server ? "Made in the browser: nothing about it is written on the page." + (on ? "" : " Turn on Current state to see its props and state.")
     : "Running. Below is what the server rendered it with: its state may have changed since." + (on ? "" : " Turn on Current state to see it as it is now.");
   box.append(
@@ -230,15 +239,17 @@ function drawDetail(force) {
   const pathOf = (what) => `${x.i}:${x.name}:${what}`;
   const map = (o) => Object.fromEntries(Object.entries(o).map(([k, t]) => [k, parsed(t)]));
   box.append(h("h3", {}, "Props"));
-  if (cur) box.append(rows(map(cur.props), pathOf("props")));
+  if (mapped) box.append(propRows(mapped.props, pathOf("props")));
+  else if (cur) box.append(rows(map(cur.props), pathOf("props")));
   else if (S.data.props === null) box.append(h("p", { class: "empty" }, "Not written on the page."));
   else {
     const props = parsed(S.data.props) || {};
     box.append(rows(props, pathOf("props")));
     if (!Object.keys(props).length && x.parent >= 0) box.append(h("p", { class: "note" }, `Inside <${S.page.islands[x.parent].name}>, which passes them when it runs: turn on Current state to see them.`));
   }
-  box.append(h("h3", {}, cur ? "State" : "State (from the server)"));
-  if (cur) box.append(rows(map(cur.state), pathOf("state"), true));
+  box.append(h("h3", {}, mapped ? "State and lets" : cur ? "State" : "State (from the server)"));
+  if (mapped) box.append(varRows(mapped.vars, pathOf("state")));
+  else if (cur) box.append(rows(map(cur.state), pathOf("state"), true));
   else if (S.data.state === null) box.append(h("p", { class: "empty" }, "Not written on the page."));
   else box.append(rows(parsed(S.data.state) || {}, pathOf("state")));
   // Live states: what they call, and the topics that make them load again.
@@ -256,6 +267,58 @@ function drawDetail(force) {
     }
     box.append(t);
   }
+}
+
+// Where a value comes from, as words and a link to each component named.
+function from(refs) {
+  const out = [];
+  refs.forEach((r, n) => {
+    if (n) out.push(", ");
+    const owner = r.ownerName ? h("button", { class: "link", title: `Show <${r.ownerName}>`, onclick: () => pick(r.owner, r.ownerName) }, `<${r.ownerName}>`) : null;
+    if (r.kind === "fixed") out.push("fixed in its parent's markup");
+    else if (r.kind === "server") out.push("written by the server on the page");
+    else if (r.kind === "default") out.push("not given: its default");
+    else if (r.kind === "row") out.push("an item of a for loop in ", owner);
+    else if (r.kind === "inside") out.push(`${r.name}, made inside `, owner, "'s markup (a view or a block)");
+    else if (r.kind === "prop") out.push(owner, `'s prop ${r.name}`, ...(r.from && r.from.length ? [" ← ", ...from(r.from)] : []));
+    else out.push(owner, `.${r.name}`, h("span", { class: "flag" }, KIND[r.kind] || r.kind));
+  });
+  return out;
+}
+
+const KIND = { state: "state", live: "live state", derived: "let, worked out again", let: "let", function: "let, a function" };
+
+// Props with where each comes from.
+function propRows(props, path) {
+  if (!props.length) return h("p", { class: "empty" }, "None.");
+  const t = h("table", { class: "kv" });
+  for (const p of props) {
+    t.append(h("tr", {}, h("td", {}, p.name), h("td", {},
+      p.value === null ? h("span", { class: "v kw" }, "(its default)") : value(parsed(p.value), `${path}.${p.name}`),
+      h("div", { class: "from" }, "← ", ...from(p.from)))));
+  }
+  return t;
+}
+
+// The component's states and lets: what each is, its value, what it reads.
+function varRows(vars, path) {
+  if (!vars.length) return h("p", { class: "empty" }, "None.");
+  const t = h("table", { class: "kv" });
+  for (const v of vars) {
+    const editing = v.kind === "state" && S.editing && S.editing[0] === S.picked && S.editing[1] === v.name;
+    let cell;
+    if (editing) cell = editor(v.name, parsed(v.value));
+    else if (v.kind === "function") cell = h("span", { class: "v kw" }, "a function");
+    else if (v.value !== null) cell = value(parsed(v.value), `${path}.${v.name}`);
+    // Not kept: a plain value as written; anything else was worked out once, and gone.
+    else if (v.text && parse(v.text).ok) cell = h("span", {}, value(parsed(v.text), `${path}.${v.name}`), h("span", { class: "note", style: "margin:0 0 0 6px" }, "as written: the browser did not keep it"));
+    else cell = h("span", { class: "note", style: "margin:0" }, "worked out once when it was made: the browser did not keep it");
+    t.append(h("tr", {}, h("td", {}, v.name), h("td", {},
+      h("span", { class: "flag" }, v.kind === "live" ? `live state: ${v.fn}` : KIND[v.kind]), " ", cell,
+      v.kind === "state" && !editing && h("button", { class: "edit", title: `Set ${v.name}`, onclick: () => { S.editing = [S.picked, v.name]; drawDetail(true); } }, "✎"),
+      v.reads.length > 0 && h("div", { class: "from" }, "reads ", ...from(v.reads)))));
+  }
+  return t;
 }
 
 // What "Current state" says: why it is off (S.off), why it cannot read, or that it is on.

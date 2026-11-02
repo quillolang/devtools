@@ -1,0 +1,83 @@
+name: Release
+
+# A tag v<version> (the version in extension/manifest.json and package.json) releases
+# the extension: the tests, on the Quillo release CI uses, then the zip to the Chrome
+# Web Store (CWS_* secrets) and to Edge Add-ons (EDGE_* secrets), each skipped while
+# its secrets are not set, and to a GitHub release with the changelog's notes.
+#
+# The first upload to each store is made by hand (the listing, the permissions'
+# reasons); after that, the item's ID and the API's keys go in the secrets.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      QUILLO: v0.6.0
+      CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+      CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+      CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+      CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+      EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+      EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+      EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The tag names the extension's version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          test "$(node -p 'require("./extension/manifest.json").version')" = "$v"
+          test "$(node -p 'require("./package.json").version')" = "$v"
+          grep -q "^## $v" CHANGELOG.md
+      - name: Quillo
+        run: |
+          a=quillo-$QUILLO-x86_64-unknown-linux-gnu
+          base=https://github.com/quillolang/quillo/releases/download/$QUILLO
+          curl -fsSLO "$base/$a.tar.gz"
+          curl -fsSLO "$base/$a.tar.gz.sha256"
+          sha256sum -c "$a.tar.gz.sha256"
+          tar xzf "$a.tar.gz"
+          echo "QUILLO_BIN=$PWD/$a/quillo" >> "$GITHUB_ENV"
+      - name: Tests
+        run: npm test && npm run test:browser
+        env:
+          CHROME_FLAGS: --no-sandbox
+      - name: The zip
+        run: npm run package && echo "ZIP=dist/quillo-devtools-${GITHUB_REF_NAME#v}.zip" >> "$GITHUB_ENV"
+      - name: Chrome Web Store
+        if: env.CWS_EXTENSION_ID != '' && env.CWS_REFRESH_TOKEN != ''
+        run: |
+          token=$(curl -fsS https://oauth2.googleapis.com/token -d client_id="$CWS_CLIENT_ID" -d client_secret="$CWS_CLIENT_SECRET" -d refresh_token="$CWS_REFRESH_TOKEN" -d grant_type=refresh_token | jq -r .access_token)
+          up=$(curl -fsS -X PUT -T "$ZIP" -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
+          echo "$up"
+          test "$(echo "$up" | jq -r .uploadState)" = SUCCESS
+          pub=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" -H "Content-Length: 0" "https://www.googleapis.com/chromewebstore/v1.1/items/$CWS_EXTENSION_ID/publish")
+          echo "$pub"
+          echo "$pub" | jq -e '.status | index("OK")' > /dev/null
+      - name: Edge Add-ons
+        if: env.EDGE_PRODUCT_ID != '' && env.EDGE_API_KEY != ''
+        run: |
+          api=https://api.addons.microsoftedge.microsoft.com/v1/products/$EDGE_PRODUCT_ID/submissions
+          auth=(-H "Authorization: ApiKey $EDGE_API_KEY" -H "X-ClientID: $EDGE_CLIENT_ID")
+          op=$(curl -fsS -D - -o /dev/null -X POST "${auth[@]}" -H "Content-Type: application/zip" --data-binary "@$ZIP" "$api/draft/package" | tr -d '\r' | awk -F': ' 'tolower($1)=="location"{print $2}')
+          for i in $(seq 30); do
+            s=$(curl -fsS "${auth[@]}" "$api/draft/package/operations/$op" | jq -r .status)
+            echo "upload: $s"; [ "$s" = Succeeded ] && break; [ "$s" = Failed ] && exit 1; sleep 10
+          done
+          [ "$s" = Succeeded ]
+          curl -fsS -X POST "${auth[@]}" -H "Content-Type: application/json" -d "{\"notes\": \"Quillo DevTools ${GITHUB_REF_NAME#v}\"}" "$api"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk '/^## /{n++} n==1 && !/^## /' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" "$ZIP" --title "Quillo DevTools ${GITHUB_REF_NAME#v}" --notes-file notes.md

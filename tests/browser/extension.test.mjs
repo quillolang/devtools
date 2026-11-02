@@ -20,6 +20,7 @@ import { launch, until, sleep, findChrome } from "./cdp.mjs";
 import { start, quilloVersion } from "./quillo.mjs";
 import { call, scan, island, highlight, selected } from "../../extension/lib/page.js";
 import { readState, setState } from "../../extension/lib/state.js";
+import { readMapping } from "../../extension/lib/mapping.js";
 import { describe as describeFrame } from "../../extension/lib/live.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -178,6 +179,54 @@ for (const watch of [false, true]) {
       }
     });
 
+    test("props are mapped to where they come from, and a component's states and lets to what they read", async () => {
+      const fam = await chrome.page(app.url + "/family");
+      await until(() => fam.evaluate("!!window.__quillo_booted"), 5000, "the family page");
+      const send = (m, p) => fam.send(m, p);
+      const s = await fam.evaluate(call(scan));
+      assert.deepEqual(s.islands.map((x) => x.name), ["Grand", "Parent", "Child", "Leaf", "Leaf", "Parent", "Child", "Pattern", "Still"]);
+      const short = (refs) => refs.map((r) => [r.ownerName, r.kind, r.name, r.from ? short(r.from) : r.value]);
+      const child = await readMapping(send, 2);
+      assert.equal(child.name, "Child");
+      assert.deepEqual(Object.fromEntries(child.props.map((p) => [p.name, [p.value, short(p.from)]])), {
+        value: ["1", [["Parent", "state", "a", "1"]]],
+        label: ['"from grand"', [["Parent", "prop", "title", [["Grand", "state", "g", '"from grand"']]]]],
+        sum: ["3", [["Parent", "state", "a", "1"], ["Parent", "state", "b", "2"]]],
+        fixed: ["7", [[undefined, "fixed", undefined, "7"]]],
+        twice: ["2", [["Parent", "derived", "double", "2"]]],
+      });
+      const parent = await readMapping(send, 1);
+      const vars = Object.fromEntries(parent.vars.map((v) => [v.name, v]));
+      assert.deepEqual(Object.keys(vars), ["a", "b", "double", "shout", "bump", "greeting", "suffix"]);
+      assert.deepEqual([vars.a.kind, vars.a.value, vars.double.kind, vars.double.value, vars.bump.kind], ["state", "1", "derived", "2", "function"]);
+      // A let the browser did not keep, shown as written; one it kept, with its value.
+      assert.deepEqual([vars.greeting.value, vars.greeting.text, vars.greeting.kept], [null, '"hi"', undefined]);
+      assert.deepEqual([vars.suffix.value, vars.suffix.kept], ['"!"', true]);
+      assert.deepEqual(short(vars.shout.reads), [["Parent", "let", "suffix", '"!"'], ["Parent", "prop", "title", [["Grand", "state", "g", '"from grand"']]]]);
+      assert.deepEqual(short((await readMapping(send, 3)).props[0].from), [["Grand", "row", undefined, undefined]]);
+      assert.deepEqual(short((await readMapping(send, 4)).props[0].from), [["Grand", "inside", "x", undefined]]);
+      const alone = await readMapping(send, 5);
+      assert.deepEqual(alone.props.map((p) => [p.name, p.value, p.from[0].kind]), [["title", null, "default"]]);
+      assert.equal(JSON.parse(alone.vars.find((v) => v.name === "shout").value), "parent!");
+      const pattern = Object.fromEntries((await readMapping(send, 7)).vars.map((v) => [v.name, [v.kind, v.value, v.kept || false]]));
+      assert.deepEqual(pattern, { a: ["state", "1", false], count: ["derived", "3", false], p: ["let", null, false], q: ["let", null, false], tags: ["let", '["x","y"]', true] });
+      // A component nothing can change: taken up, and its code let go.
+      assert.equal(s.islands[8].resumed, true);
+      assert.deepEqual(await readMapping(send, 8), { ok: false, why: "no component there any more" });
+      assert.equal((await readState(send)).components.some((c) => c.name === "Still"), false);
+      // Counter: props the server wrote, a live state; a handler's own let is not the component's.
+      const counter = await readMapping((m, p) => page.send(m, p), 0);
+      assert.deepEqual(counter.props.map((p) => p.from[0].kind), ["server", "server"]);
+      assert.deepEqual(counter.vars.map((v) => [v.name, v.kind]), [["n", "state"], ["note", "state"], ["echoed", "state"], ["extra", "state"], ["items", "live"]]);
+      assert.equal(counter.vars.find((v) => v.kind === "live").fn, "list_tasks");
+      // After a click, the values follow.
+      await fam.evaluate("document.querySelector('button.bump').click()");
+      await until(async () => (await readMapping(send, 2)).props[0].value === "2", 2000, "value = 2");
+      assert.equal((await readMapping(send, 1)).vars.find((v) => v.name === "double").value, "4");
+      assert.deepEqual(await readMapping(send, 42), { ok: false, why: "no component there any more" });
+      await chrome.closePage(fam);
+    });
+
     test("the devtools page adds the panel and the Elements pane", async () => {
       const dtp = await chrome.page();
       await dtp.send("Page.addScriptToEvaluateOnNewDocument", { source: `(${devtoolsStub.toString()})()` });
@@ -215,7 +264,8 @@ for (const watch of [false, true]) {
       // Current state, through the real chrome.debugger.
       await panel.evaluate("document.getElementById('current').click()");
       await until(() => panel.evaluate("/as they are now/.test(document.querySelector('#detail .status').textContent)"), 5000, "current state");
-      assert.match(await panel.evaluate("document.getElementById('detail').textContent"), /n100/);
+      assert.match(await panel.evaluate("document.getElementById('detail').textContent"), /State and lets.*nstate 100/);
+      assert.match(await panel.evaluate("document.getElementById('detail').textContent"), /start3← written by the server on the page/);
       // Set a state from the panel.
       await panel.evaluate("[...document.querySelectorAll('#detail tr')].find((r) => r.firstChild.textContent === 'n').querySelector('.edit').click()");
       await panel.evaluate(`(() => { const i = document.querySelector('#detail input[type=text]'); i.value = '7'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); })()`);
@@ -267,6 +317,47 @@ for (const watch of [false, true]) {
       assert.match(server, watch ? /Running with --watch/ : /GET\/plain/);
       assert.match(server, watch ? /Run the program with --describe/ : /server fnslow_echo/);
       await shot(panel, `server-${watch ? "watch" : "production"}`);
+      // Props and lets, on the family page.
+      await panel.evaluate("document.querySelector('[data-tab=components]').click()");
+      await panel.evaluate("document.getElementById('current').click()");
+      await until(() => panel.evaluate("/Current state is on/.test(document.getElementById('state-note').textContent)"), 5000, "the debugger");
+      await page.go(app.url + "/family");
+      await until(() => panel.evaluate("document.querySelectorAll('#tree li[role=treeitem]').length === 9"), 5000, "the family's tree");
+      const pickNth = (name, n = 0) => panel.evaluate(`[...document.querySelectorAll('#tree li')].filter((l) => l.querySelector('.tag').textContent === '<${name}>')[${n}].click()`);
+      const detail = () => panel.evaluate("document.getElementById('detail').textContent");
+      await pickNth("Child");
+      await until(async () => /State and lets/.test(await detail()), 5000, "Child's mapping");
+      const c = await detail();
+      assert.match(c, /value1← <Parent>\.astate/);
+      assert.match(c, /label"from grand"← <Parent>'s prop title ← <Grand>\.gstate/);
+      assert.match(c, /sum3← <Parent>\.astate, <Parent>\.bstate/);
+      assert.match(c, /fixed7← fixed in its parent's markup/);
+      assert.match(c, /twice2← <Parent>\.doublelet, worked out again/);
+      await shot(panel, `mapping-${watch ? "watch" : "production"}`);
+      // A component named there is a link to it.
+      await panel.evaluate("document.querySelector('#detail button.link').click()");
+      await until(async () => /^<Parent>/.test(await detail()) && /State and lets/.test(await detail()), 5000, "Parent's mapping");
+      const p = await detail();
+      assert.match(p, /greetinglet "hi"as written: the browser did not keep it/);
+      assert.match(p, /suffixlet "!"/);
+      assert.match(p, /bumplet, a function a function/);
+      assert.match(p, /shoutlet, worked out again "from grand!".*reads <Parent>\.suffixlet, <Parent>'s prop title ← <Grand>\.gstate/);
+      await pickNth("Leaf", 0);
+      await until(async () => /an item of a for loop in <Grand>/.test(await detail()), 5000, "the loop's item");
+      await pickNth("Leaf", 1);
+      await until(async () => /x, made inside <Grand>'s markup \(a view or a block\)/.test(await detail()), 5000, "the view's value");
+      await pickNth("Parent", 1);
+      await until(async () => /title\(its default\)← not given: its default/.test(await detail()), 5000, "the default");
+      await pickNth("Pattern");
+      await until(async () => /tagslet \["x", "y"\]/.test(await detail()), 5000, "the kept list");
+      assert.match(await detail(), /plet worked out once when it was made: the browser did not keep it/);
+      await pickNth("Still");
+      await until(async () => /the browser let its code go/.test(await detail()), 5000, "the let-go component");
+      await pickNth("Grand");
+      await until(async () => /PropsNone\./.test(await detail()), 5000, "no props");
+      await pickNth("Leaf", 0);
+      await until(async () => /State and letsNone\./.test(await detail()), 5000, "no vars");
+      await panel.evaluate("document.getElementById('current').click()");
       // The server gone: the Server tab says so.
       app.stop();
       await panel.evaluate("document.getElementById('refresh-server').click()");
@@ -391,7 +482,7 @@ function stub(origin) {
   };
   Object.defineProperty(chrome, "devtools", { value: devtools, configurable: true });
   chrome.tabs.query({}, (tabs) => {
-    const t = tabs.find((x) => x.url && x.url.startsWith(origin + "/") && !x.url.endsWith("/plain"));
+    const t = tabs.find((x) => x.url === origin + "/");
     if (t) devtools.inspectedWindow.tabId = t.id;
   });
 }

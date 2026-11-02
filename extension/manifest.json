@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Quillo DevTools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A Quillo panel in the browser's developer tools: the page's components, their props and state, server fn calls, live updates, errors and the server's health.",
   "homepage_url": "https://github.com/quillolang/devtools",
   "minimum_chrome_version": "111",

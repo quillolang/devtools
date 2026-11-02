@@ -15,7 +15,7 @@
 // `send(method, params)` sends one protocol command and resolves to its result: in
 // the extension, chrome.debugger.sendCommand; in the tests, a CDP session.
 
-const GROUP = "quillo-devtools";
+export const GROUP = "quillo-devtools";
 const WANT = ["Inst", "Live", "toJSON", "untagDeep"];
 
 // Functions the runtime puts on the page, any one of which leads into its closure.
@@ -25,7 +25,7 @@ const ENTRIES = [
   "window.__quillo_rt && Object.values(window.__quillo_rt).find((f) => typeof f === 'function')",
 ];
 
-async function runtime(send) {
+export async function runtime(send) {
   const found = {};
   let entry = null;
   for (const expression of ENTRIES) {
@@ -60,9 +60,9 @@ async function runtime(send) {
   return { ok: true, found, all: all.objects.objectId };
 }
 
-const arg = (id) => (id ? { objectId: id } : { value: null });
+export const arg = (id) => (id ? { objectId: id } : { value: null });
 
-const release = (send) => send("Runtime.releaseObjectGroup", { objectGroup: GROUP }).catch(() => {});
+export const release = (send) => send("Runtime.releaseObjectGroup", { objectGroup: GROUP }).catch(() => {});
 
 // Every component on the page now: [{ index, name, props, state, live }], `index`
 // being its island's place among the page's islands in document order (as `scan`

@@ -8,6 +8,7 @@ db.migrate("migrations")
 use lib/tasks.qwe
 use ui/probe.qwe
 use ui/chat.qwe
+use ui/family.qwe
 
 route GET / =
     <html><head><title>probe</title></head><body>
@@ -21,3 +22,6 @@ route GET /plain =
 
 route GET /chat =
     <html><head><title>chat</title></head><body><Chat/></body></html>
+
+route GET /family =
+    <html><head><title>family</title></head><body><Grand/><Parent/><Pattern/><Still/></body></html>

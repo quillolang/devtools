@@ -5,12 +5,12 @@ A **Quillo** panel in the browser's developer tools, for pages made by
 the server fn calls the page makes, live updates, the errors Quillo catches, and the
 server's health and query times.
 
-Test coverage: **100.00% of lines** (937 of 937 in `extension/`), by 25 unit tests in
-Node and 22 tests in Chrome on a Quillo app. See [Tests](#tests).
+Test coverage: **100.00% of lines** (1,201 of 1,201 in `extension/`), by 32 unit tests
+in Node and 24 tests in Chrome on a Quillo app. See [Tests](#tests).
 
 | Tab | What it shows |
 |---|---|
-| **Components** | Every component on the page, nested as on the page, with its props and state. Hover one to see it on the page; *Show in Elements* selects it there. With **Current state** on, props and state are as they are now, and ✎ sets a state |
+| **Components** | Every component on the page, nested as on the page, with its props and state. Hover one to see it on the page; *Show in Elements* selects it there. With **Current state** on, props and state are as they are now, and ✎ sets a state. Each prop says where it comes from (`← <Parent>.a`, `← <Parent>'s prop title ← <Grand>.g`, fixed in the markup, written by the server, a loop's item, its default), each component named a link to it; and the component's states and lets are listed with their kind (state, live state, let, let worked out again, function), their value and what each reads |
 | **Calls** | Each server fn call: its arguments, its answer or error value, its time and status; a live state loading again, a call sent once (`idempotent`) and resent, files sent with it |
 | **Live** | What the page's live states follow (tables and globals), each change the server announces, and channel messages when they go over a WebSocket; under `--watch`, reloads |
 | **Errors** | The errors Quillo catches in the page, and how many components were taken up as the server sent them or made again |
@@ -48,7 +48,17 @@ shows from outside:
   of a function the runtime puts on the page. The browser shows a bar while it is on.
   This depends on names inside Quillo's runtime that it does not promise to keep; when
   they change, the panel says so rather than showing something wrong. Tested on Quillo
-  0.6.0 and on its main branch (487c518).
+  0.6.0 and on its main branch (54dd1bd).
+- **Where props come from, and the lets** are read from the code Quillo compiled for each
+  component (the same in production and under `--watch`): a child's prop is a getter
+  whose text names what it reads in its parent (`$a_2` is the parent's `a`, `$p.title`
+  its prop `title`), followed up to the state or let it ends at. A let's value is the
+  browser's where it keeps it (in a closure); one it did not keep (used once, when the
+  component was made) is shown as written. Something made inside the parent's markup by
+  a view or a block has no name left in the compiled code, and is said so.
+- **A component nothing can change** (no handler, live state or timer) is let go by the
+  browser once it is on the page: with **Current state** on, the panel says so, and
+  shows what the server rendered, which is what the page keeps showing.
 - **Calls** come from the Network panel's own record, so only those made while the
   developer tools are open.
 - **Errors and live updates** come from two content scripts. `page/main.js` runs in the
@@ -84,12 +94,22 @@ real `chrome.debugger`, and checks each tab. A screenshot of each goes in `tests
 
 `coverage` runs both with V8's coverage on, in Node and in Chrome, and counts the lines of
 `extension/` that ran, from [scripts/coverage.mjs](scripts/coverage.mjs). The figure above
-is from a build of Quillo's main branch (487c518). On the 0.6.0 release the query-time
+is from a build of Quillo's main branch (54dd1bd). On the 0.6.0 release the query-time
 table is not drawn (0.6.0 has no `/_quillo/health/queries`), so a few lines of the panel
 are not run there.
 
 CI ([.github/workflows/check.yml](.github/workflows/check.yml)) runs both suites on each
 Quillo release the extension supports, and keeps the screenshots and the packaged zip.
+
+## Releasing
+
+Bump the version in `extension/manifest.json` and `package.json`, add its section to
+[CHANGELOG.md](CHANGELOG.md), and push a tag `v<version>`.
+[release.yml](.github/workflows/release.yml) runs the tests, then publishes the zip to the
+Chrome Web Store and Edge Add-ons, and to a GitHub release with that section's notes. Each
+store is skipped until its secrets are set (`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`,
+`CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID`; `EDGE_CLIENT_ID`, `EDGE_API_KEY`,
+`EDGE_PRODUCT_ID`), which they can be once the first upload to that store was made by hand.
 
 ## Layout
 
@@ -100,6 +120,7 @@ extension/
   panel.html/.css/.js  the panel
   lib/page.js          functions the panel runs in the page: the islands, a box over one
   lib/state.js         current state through the debugger protocol
+  lib/mapping.js       where props come from, and the states and lets, from compiled code
   lib/calls.js         a server fn call from the Network panel's record
   lib/live.js          what Quillo's sockets carry, made readable
   lib/values.js        Quillo's values on the wire ($dec, $int, $quillo_err) and as text

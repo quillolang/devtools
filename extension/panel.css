@@ -23,6 +23,7 @@ code, .mono, .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mo
 .tabs button[aria-selected=true] { border-bottom-color: var(--accent); color: var(--accent); }
 .mode { margin-left: auto; color: var(--muted); }
 .mode.dev { color: var(--ok); }
+.badge[hidden] { display: none; }
 .badge { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--bad); color: #fff; font-size: 10px; text-align: center; }
 
 main { flex: 1; min-height: 0; }
@@ -87,3 +88,8 @@ details.v > .kids { margin-left: 14px; }
 
 #server-body { padding: 4px 12px 12px; }
 .ok { color: var(--ok); }
+
+.from { color: var(--muted); font-size: 11px; margin: 1px 0 3px; }
+.from .flag { margin-left: 4px; }
+button.link { border: 0; padding: 0; color: var(--name); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; text-decoration: underline dotted; }
+button.link:hover { background: none; text-decoration: underline; }

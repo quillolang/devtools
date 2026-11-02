@@ -1,0 +1,54 @@
+// Props from parent to child, of each kind, and a component's lets: what the
+// panel maps to the state or prop each one comes from.
+
+component Child(value: int, label: str, sum: int, fixed: int, twice: int) {
+    state seen = 0
+    <p.child>{label}: {value} {sum} {fixed} {twice} {seen}</p>
+}
+
+component Parent(title: str = "parent") {
+    state a = 1
+    state b = 2
+    let double = a * 2
+    let greeting = "hi"
+    let bump = () => { a = a + 1 }
+    let suffix = "!"
+    let shout = title + suffix
+    <div.parent>
+        <button.bump @click={bump}>{greeting} {double} {shout}</button>
+        <Child value={a} label={title} sum={a + b} fixed={7} twice={double}/>
+    </div>
+}
+
+component Leaf(n: int) {
+    <i.leaf>{n}</i>
+}
+
+// A view between: what it passes is its own parameter, which the panel cannot name.
+view Wrap(x: int) =
+    <span.wrap><Leaf n={x + 1}/></span>
+
+component Grand() {
+    state g = "from grand"
+    <section.grand>
+        <Parent title={g}/>
+        {for k in [5] => <Leaf n={k}/>}
+        <Wrap x={g == "" ? 0 : 1}/>
+    </section>
+}
+
+// A let from a pattern, worked out once and not kept; a list kept by the let that reads it.
+component Pattern() {
+    state a = 1
+    let [p, q] = [1, 2]
+    let tags = ["x", "y"]
+    let count = len(tags) + a
+    <p.pattern @click={() => { a = a + 1 }}>{p} {q} {count}</p>
+}
+
+// Nothing in the browser can change it (no handler, no live state, no timer): once
+// taken up, the browser lets its code go.
+component Still() {
+    state s = 1
+    <b.still>{s}</b>
+}
