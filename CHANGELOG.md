@@ -8,10 +8,16 @@
   prop from a state, a let or the parent's prop. It now finds the parent's getter in that
   getter's closure, through the debugger, and maps it as before; pages from older Quillo
   read as they did.
+- **The health token.** Since Quillo 0.8 `/_quillo/ready` lists each check only to a
+  request with the server's `QUILLO_HEALTH_TOKEN` (Quillo's Q-655), so the Server tab's
+  "What it needs" was empty. The tab has a field for it now: typed, it is sent as
+  `Authorization: Bearer` to that page's server only, to `/_quillo/ready` and
+  `/_quillo/health/queries` (each statement's figures outside `--watch`), and kept in the
+  panel until it closes, never stored. Without it the tab says the checks need it; a
+  token the server does not take is said so.
 - Tested on Quillo 0.8.2 and 0.8.1 (89a91c2), in production and under
-  `--watch`: 35 unit tests and 24 in Chrome. 99.68% of lines: the Server tab's readiness
-  checks are not drawn on 0.8, whose `/_quillo/ready` lists them only to a request with
-  the health token.
+  `--watch`: 35 unit tests and 24 in Chrome; every line of `extension/` runs (1,264).
+- The release workflow tests on Quillo 0.8.2 (was 0.6.0).
 
 ## 0.2.0
 

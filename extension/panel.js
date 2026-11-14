@@ -505,9 +505,16 @@ $("clear-errors").addEventListener("click", () => { S.errors = []; drawErrors();
 
 // ---- the server ------------------------------------------------------------
 
-async function get(path, json) {
+// The health token (QUILLO_HEALTH_TOKEN), for each origin it was typed for: kept in
+// the panel only, never stored, and sent only to that origin, to the addresses that
+// ask for it (each readiness check, each statement's query figures; Quillo's Q-655).
+const tokens = new Map();
+
+async function get(path, json, auth) {
   try {
-    const r = await fetch(S.page.origin + path, { cache: "no-store", credentials: "omit" });
+    const token = auth && tokens.get(S.page.origin);
+    const headers = token ? { authorization: `Bearer ${token}` } : {};
+    const r = await fetch(S.page.origin + path, { cache: "no-store", credentials: "omit", headers });
     const text = await r.text();
     let body = text;
     if (json) { try { body = JSON.parse(text); } catch (_) {} }
@@ -521,8 +528,9 @@ async function loadServer() {
   const box = $("server-body");
   if (!S.page || !S.page.quillo) { box.replaceChildren(h("p", { class: "empty" }, "No Quillo on this page.")); return; }
   $("origin").textContent = S.page.origin;
+  $("health-token").value = tokens.get(S.page.origin) || "";
   const [health, ready, queries, dev, api] = await Promise.all([
-    get("/_quillo/health"), get("/_quillo/ready", true), get("/_quillo/health/queries", true), get("/_quillo/dev"), get("/_quillo/describe", true)]);
+    get("/_quillo/health"), get("/_quillo/ready", true, true), get("/_quillo/health/queries", true, true), get("/_quillo/dev"), get("/_quillo/describe", true)]);
   box.replaceChildren();
   box.append(h("h3", {}, "Health"),
     h("p", {}, health.status === 200 ? h("span", { class: "ok" }, "Ready for requests") : h("span", { class: "why" }, `${health.status || "no answer"}: ${health.body}`)));
@@ -530,6 +538,11 @@ async function loadServer() {
     const t = h("table", { class: "kv" });
     for (const [k, v] of Object.entries(ready.body.checks)) t.append(h("tr", {}, h("td", {}, k), h("td", { class: v === "ready" ? "ok" : "why" }, v)));
     box.append(h("h3", {}, "What it needs"), t);
+  } else if (ready.body && typeof ready.body === "object" && "ready" in ready.body) {
+    // Since Quillo 0.8, whether it is ready only, without the token.
+    box.append(h("h3", {}, "What it needs"), h("p", { class: "note", style: "margin:0" },
+      tokens.get(S.page.origin) ? `The token was not taken (${ready.status}): each check is listed only with the server's QUILLO_HEALTH_TOKEN.`
+        : "Each check is listed with the server's health token (QUILLO_HEALTH_TOKEN): type it above."));
   }
   box.append(h("h3", {}, "Database queries"));
   const q = queries.body;
@@ -559,6 +572,12 @@ async function loadServer() {
   } else box.append(h("p", { class: "note", style: "margin:0" }, "Run the program with --describe for its routes and server fns here (GET /_quillo/describe)."));
 }
 $("refresh-server").addEventListener("click", loadServer);
+$("health-token").addEventListener("change", (e) => {
+  if (!S.page) return;
+  const v = e.target.value.trim();
+  if (v) tokens.set(S.page.origin, v); else tokens.delete(S.page.origin);
+  loadServer();
+});
 
 // ---- start -----------------------------------------------------------------
 

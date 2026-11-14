@@ -14,7 +14,7 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
 body { display: flex; flex-direction: column; }
 button { font: inherit; color: inherit; background: none; border: 1px solid var(--line); border-radius: 3px; padding: 1px 8px; cursor: pointer; }
 button:hover { background: var(--hover); }
-input[type=search], input[type=text] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; min-width: 0; }
+input[type=search], input[type=text], input[type=password] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; min-width: 0; }
 code, .mono, .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
 
 .bar { display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--line); min-height: 27px; }

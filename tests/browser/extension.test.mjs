@@ -30,6 +30,8 @@ const NAME = "Quillo DevTools";
 
 const skip = !findChrome() ? "no Chrome (set CHROME)" : !quilloVersion() ? "no quillo (set QUILLO_BIN)" : false;
 
+// The production run's health token (16 characters at least).
+const TOKEN = "devtools-test-token-0123456789";
 const isolated = (p) => p.contexts.filter((c) => c.auxData && c.auxData.type === "isolated" && c.name === NAME).pop();
 // Whether the runtime has started: a name before Quillo 0.7, a field of its key since.
 const BOOTED = "!!window.__quillo_booted || !!(window[Symbol.for('quillo')] || {}).booted";
@@ -45,7 +47,7 @@ for (const watch of [false, true]) {
     before(async () => {
       // Production with --describe, so that the Server tab lists the API, and with
       // --no-wt, so that channels go over a WebSocket; --watch with WebTransport.
-      app = await start({ watch, describe: !watch, args: watch ? [] : ["--no-wt"] });
+      app = await start({ watch, describe: !watch, args: watch ? [] : ["--no-wt"], env: watch ? {} : { QUILLO_HEALTH_TOKEN: TOKEN } });
       chrome = await launch({ extension: EXT });
       page = await chrome.page(app.url + "/");
       await until(() => page.evaluate(BOOTED), 8000, "Quillo to start");
@@ -322,6 +324,25 @@ for (const watch of [false, true]) {
       assert.match(server, watch ? /Running with --watch/ : /GET\/plain/);
       assert.match(server, watch ? /Run the program with --describe/ : /server fnslow_echo/);
       await shot(panel, `server-${watch ? "watch" : "production"}`);
+      // The health token: since Quillo 0.8 each readiness check is listed only with it
+      // (Q-655); before, to anyone. Typed in the panel, it goes to this origin only.
+      const body = () => panel.evaluate("document.getElementById('server-body').textContent");
+      const type = (v) => panel.evaluate(`(() => { const i = document.getElementById('health-token'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change')); })()`);
+      if (!/type it above/.test(server)) assert.doesNotMatch(quilloVersion(), /^quillo 0\.8/);
+      else {
+        assert.match(server, /What it needsEach check is listed with the server's health token \(QUILLO_HEALTH_TOKEN\): type it above\./);
+        if (!watch) {
+          await type("not-the-token-at-all");
+          await until(async () => /The token was not taken \(200\)/.test(await body()), 5000, "a wrong token");
+          await type(TOKEN);
+          await until(async () => /What it needs\w+ready/.test(await body()), 5000, "the checks");
+          await shot(panel, "server-token");
+          assert.equal(await panel.evaluate("document.getElementById('health-token').value"), TOKEN);
+          // Emptied: the checks are hidden again.
+          await type("");
+          await until(async () => /type it above/.test(await body()), 5000, "no token");
+        }
+      }
       // Props and lets, on the family page.
       await panel.evaluate("document.querySelector('[data-tab=components]').click()");
       await panel.evaluate("document.getElementById('current').click()");

@@ -28,12 +28,12 @@ const freePort = () => new Promise((ok, no) => {
   s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => ok(port)); });
 });
 
-export async function start({ watch = false, describe = false, args: extra = [] } = {}) {
+export async function start({ watch = false, describe = false, args: extra = [], env = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "quillo-devtools-app-"));
   cpSync(FIXTURE, dir, { recursive: true });
   const port = await freePort();
   const args = ["run", "main.qwe", "--port", String(port), ...(watch ? ["--watch"] : []), ...(describe ? ["--describe"] : []), ...extra];
-  const proc = spawn(quilloBin(), args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  const proc = spawn(quilloBin(), args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
   let log = "";
   proc.stdout.on("data", (d) => { log += d; });
   proc.stderr.on("data", (d) => { log += d; });
