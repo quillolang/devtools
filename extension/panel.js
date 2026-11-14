@@ -138,10 +138,31 @@ const parsed = (text) => {
 
 // ---- components ------------------------------------------------------------
 
+// Whether a page's server is Quillo, for a page with nothing of Quillo's in it: since Quillo
+// 0.8.3 a page with no link, script or component is sent as the route made it, without the
+// prefetch script that had marked every page. Its health address answers as only Quillo's does
+// ("ok" or "unavailable"), asked once for each origin.
+const served = new Map();
+async function servedByQuillo(origin) {
+  if (!/^https?:/.test(origin || "")) return false;
+  if (!served.has(origin)) {
+    served.set(origin, (async () => {
+      try {
+        const r = await fetch(origin + "/_quillo/health", { cache: "no-store", credentials: "omit" });
+        return ["ok\n", "unavailable\n"].includes(await r.text());
+      } catch (_) {
+        return false;
+      }
+    })());
+  }
+  return served.get(origin);
+}
+
 async function tick() {
   if (!S.shown) return;
   const r = await evalPage(call(scan));
   S.page = r.error ? null : r.value;
+  if (S.page && !S.page.quillo && await servedByQuillo(S.page.origin)) S.page.quillo = S.page.served = true;
   if (S.page && S.picked >= 0) {
     const d = await evalPage(call(island, S.picked));
     S.data = d.error ? null : d.value;

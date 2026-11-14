@@ -5,8 +5,8 @@ A **Quillo** panel in the browser's developer tools, for pages made by
 the server fn calls the page makes, live updates, the errors Quillo catches, and the
 server's health and query times.
 
-Test coverage: **100% of lines** (1,264 of 1,264 in `extension/`), by 35 unit tests
-in Node and 24 tests in Chrome on a Quillo app (Quillo 0.8.2). See [Tests](#tests).
+Test coverage: **100% of lines** (1,280 of 1,280 in `extension/`), by 35 unit tests
+in Node and 24 tests in Chrome on a Quillo app (Quillo 0.8.3). See [Tests](#tests).
 
 | Tab | What it shows |
 |---|---|
@@ -97,7 +97,7 @@ real `chrome.debugger`, and checks each tab. A screenshot of each goes in `tests
 
 `coverage` runs both with V8's coverage on, in Node and in Chrome, and counts the lines of
 `extension/` that ran, from [scripts/coverage.mjs](scripts/coverage.mjs). The figure above
-is from Quillo 0.8.2 (b33c2be). On the 0.6.0 release the query-time
+is from Quillo 0.8.3 (7d91e2c). On the 0.6.0 release the query-time
 table is not drawn (0.6.0 has no `/_quillo/health/queries`), so a few lines of the panel
 are not run there. The production run sets a health token, which the test types in the
 Server tab: a wrong one, the right one, then none.

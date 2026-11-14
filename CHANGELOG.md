@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.2
+
+- **Quillo 0.8.3's plain pages.** Since Quillo 0.8.3 a page with no link, script or component
+  is sent as its route made it, without the prefetch script that had marked every page as
+  Quillo's, so the panel said "No Quillo on this page" on such a page. When the page has
+  nothing of Quillo's, the panel now asks its server's `/_quillo/health`, once for each origin,
+  and takes the page for Quillo's when it answers as only Quillo does (`ok` or `unavailable`);
+  a server that answers otherwise, or not at all, is not taken for Quillo.
+- Tested on Quillo 0.8.3, 0.8.2 and 0.8.1: 35 unit tests and 24 in Chrome; every line of
+  `extension/` runs (1,280). CI tests v0.8.3 too, and the release workflow tests on it.
+
 ## 0.2.1
 
 - **Where props come from, on Quillo 0.8.** Since Quillo 0.8.0 a component keeps its own

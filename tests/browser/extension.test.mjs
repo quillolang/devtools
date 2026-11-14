@@ -14,6 +14,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch, until, sleep, findChrome } from "./cdp.mjs";
@@ -67,7 +68,10 @@ for (const watch of [false, true]) {
       assert.equal(await plain.evaluate("'__quilloErrors' in window"), false);
       assert.deepEqual((await heard(plain)).events.map((e) => [e.kind, e.path]), watch ? [["ws-open", "/_quillo/events"]] : []);
       const s = await plain.evaluate(call(scan));
-      assert.deepEqual([s.quillo, s.islands.length, s.dev], [true, 0, watch]);
+      // Since Quillo 0.8.3 a page with no link, script or component carries nothing of Quillo's
+      // (no prefetch script), so the page alone cannot tell; the panel asks its server (below).
+      const marked = /^quillo 0\.([0-7]\.|8\.[0-2] )/.test(quilloVersion());
+      assert.deepEqual([s.quillo, s.islands.length, s.dev], [marked, 0, watch]);
       const blank = await chrome.page("data:text/html,<p>not Quillo</p>");
       assert.equal((await blank.evaluate(call(scan))).quillo, false);
     });
@@ -343,6 +347,13 @@ for (const watch of [false, true]) {
           await until(async () => /type it above/.test(await body()), 5000, "no token");
         }
       }
+      // A page with nothing of Quillo's in it is still Quillo's to the panel: its server's health
+      // address answers as Quillo's does.
+      await panel.evaluate("document.querySelector('[data-tab=components]').click()");
+      await page.go(app.url + "/plain");
+      await until(() => panel.evaluate("/No component on this page/.test(document.getElementById('tree').textContent)"), 5000, "the plain page");
+      await page.go(app.url + "/");
+      await until(() => page.evaluate(BOOTED), 8000, "Quillo to start again");
       // Props and lets, on the family page.
       await panel.evaluate("document.querySelector('[data-tab=components]').click()");
       await panel.evaluate("document.getElementById('current').click()");
@@ -384,6 +395,20 @@ for (const watch of [false, true]) {
       await pickNth("Leaf", 0);
       await until(async () => /State and letsNone\./.test(await detail()), 5000, "no vars");
       await panel.evaluate("document.getElementById('current').click()");
+      // Another site's page, whose server is not Quillo: one that drops the health request is
+      // not taken for Quillo.
+      const other = createServer((req, res) => {
+        if (req.url === "/_quillo/health") return req.socket.destroy();
+        res.setHeader("content-type", "text/html");
+        res.end("<p>not Quillo</p>");
+      });
+      await new Promise((ok) => other.listen(0, "127.0.0.1", ok));
+      await page.go(`http://127.0.0.1:${other.address().port}/`);
+      await until(() => panel.evaluate("/No Quillo on this page/.test(document.getElementById('tree').textContent)"), 5000, "not Quillo");
+      other.close();
+      await page.go(app.url + "/");
+      await until(() => page.evaluate(BOOTED), 8000, "Quillo to start again");
+      await until(() => panel.evaluate("document.querySelectorAll('#tree li[role=treeitem]').length > 0"), 5000, "the page's tree again");
       // The server gone: the Server tab says so.
       app.stop();
       await panel.evaluate("document.getElementById('refresh-server').click()");
