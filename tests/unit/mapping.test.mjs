@@ -2,7 +2,7 @@
 // and readMapping against a protocol played here. The real one is in tests/browser.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nameOf, balanced, statementEnd, depths, declarations, reads, readMapping } from "../../extension/lib/mapping.js";
+import { nameOf, balanced, statementEnd, depths, declarations, reads, readMapping, unheld, compiledGetter } from "../../extension/lib/mapping.js";
 
 // As Quillo compiles them (production joins some lines; the reading must not care).
 const PARENT = `function ($i, $p) {
@@ -183,4 +183,77 @@ test("readMapping: no lets, nothing more asked; and why it cannot read", async (
   const none = protocol();
   const send = (m, x) => (m === "Runtime.evaluate" ? Promise.resolve({ result: { type: "undefined" } }) : none.send(m, x));
   assert.match((await readMapping(send, 0)).why, /has not started/);
+});
+
+test("compiledGetter tells a compiled getter from a held one", () => {
+  assert.deepEqual(['get "value"() { return $a_2.v; }', "get [k]() {}", "get title() {}", "get() { return last; }", "get () {}", "getter() {}", "() => 1", undefined].map(compiledGetter),
+    [true, true, true, false, false, false, false, false]);
+});
+
+// Quillo 0.8's held props (runtime.js's heldProps): the getter a component keeps holds its
+// parent's in its closure, which the PAGE and CLOSURES functions are given in its place.
+test("unheld: the parent's getter behind each held one, as a Map in the page", async () => {
+  const fn = (scope) => ({ internalProperties: [{ name: "[[Scopes]]", value: { objectId: scope } }] });
+  const graph = {
+    held: { result: [{ name: "0", value: { objectId: "w1" } }, { name: "1", value: { objectId: "w2" } }, { name: "2", value: { objectId: "w3" } }, { name: "3", value: { value: 1 } }, { name: "length", value: { value: 4 } }] },
+    // w1: its block scope holds the parent's getter, after a runtime function.
+    w1: fn("s1"),
+    s1: { result: [{ name: "0", value: { objectId: "b1", description: "Block" } }, { name: "1", value: { objectId: "r1", description: "Closure" } }, { name: "2", value: { objectId: "g", description: "Global" } }] },
+    b1: { result: [{ name: "last" }, { name: "inst", value: { type: "object", objectId: "inst" } }, { name: "d", value: { type: "function", objectId: "x", description: "() => 1" } }, { name: "get", value: { type: "function", objectId: "g1", description: 'get "value"() { return $a_2.v; }' } }] },
+    // w2: no closure shown; w3: none that a component's code made.
+    w2: { internalProperties: [] },
+    w3: fn("s3"),
+    s3: { result: [{ name: "0", value: { objectId: "b3", description: "Block" } }] },
+    b3: { result: [{ name: "spreads", value: { type: "function", objectId: "y", description: "() => [m]" } }] },
+  };
+  const sent = [];
+  const send = async (method, params) => {
+    sent.push([method, params]);
+    if (method === "Runtime.getProperties") return graph[params.objectId] || { result: [] };
+    if (params.functionDeclaration.startsWith("function (picked)")) return { result: { objectId: "held" } };
+    if (params.functionDeclaration.startsWith("function (...gs)")) return { result: { objectId: "map" } };
+    return {};
+  };
+  assert.equal(await unheld(send, { all: "all" }, 2), "map");
+  assert.deepEqual(sent[0][1].arguments, [{ value: 2 }]);
+  assert.deepEqual(sent.at(-1)[1].arguments, [{ objectId: "g1" }, { value: null }, { value: null }]);
+  // The runtime's own closure is not read once the parent's getter is found.
+  assert.equal(sent.some(([, x]) => x.objectId === "r1"), false);
+  // None held (Quillo before 0.8), none read, or no list: null, and no Map made.
+  const none = (answers) => async (method, params) => (method === "Runtime.getProperties" ? answers[params.objectId] || { result: [] } : params.functionDeclaration.startsWith("function (picked)") ? answers.list : { result: { objectId: "map" } });
+  assert.equal(await unheld(none({ list: { result: { objectId: "held" } } }), { all: "all" }, 0), null);
+  assert.equal(await unheld(none({ list: { result: { objectId: "held" } }, held: { result: [{ name: "0", value: { objectId: "w2" } }] }, w2: { internalProperties: [] } }), { all: "all" }, 0), null);
+  assert.equal(await unheld(none({ list: {} }), { all: "all" }, 0), null);
+  assert.equal(await unheld(async (m, p) => (m === "Runtime.getProperties" ? graph[p.objectId] || { result: [] } : p.functionDeclaration.startsWith("function (picked)") ? { result: { objectId: "held" } } : {}), { all: "all" }, 0), null);
+});
+
+test("readMapping gives the page and the closures the held getters' Map", async () => {
+  const sent = [];
+  const send = async (method, params) => {
+    sent.push([method, params]);
+    if (method === "Runtime.evaluate") return { result: params.expression === "window.__quillo_resume" ? { type: "function", objectId: "fn" } : { type: "undefined" } };
+    if (method === "Runtime.getProperties") {
+      return {
+        fn: { internalProperties: [{ name: "[[Scopes]]", value: { objectId: "scopes" } }] },
+        scopes: { result: [{ name: "0", value: { objectId: "closure", description: "Closure" } }] },
+        closure: { result: [{ name: "Inst", value: { objectId: "id:Inst" } }] },
+        held: { result: [{ name: "0", value: { objectId: "w1" } }] },
+        w1: { internalProperties: [{ name: "[[Scopes]]", value: { objectId: "s1" } }] },
+        s1: { result: [{ name: "0", value: { objectId: "b1", description: "Block" } }] },
+        b1: { result: [{ name: "get", value: { type: "function", objectId: "g1", description: 'get "value"() { return $a_2.v; }' } }] },
+      }[params.objectId] || { result: [] };
+    }
+    if (method === "Runtime.queryObjects") return { objects: { objectId: "all" } };
+    if (method === "Runtime.releaseObjectGroup") return {};
+    if (params.objectId === "id:Inst") return { result: { objectId: "proto" } };
+    if (params.functionDeclaration.startsWith("function (picked)")) return { result: { objectId: "held" } };
+    if (params.functionDeclaration.startsWith("function (...gs)")) return { result: { objectId: "map" } };
+    if (params.functionDeclaration.startsWith("function (toJSON, index)")) return { result: { value: { index: 1, name: "P", props: [], vars: [v("$x_1", "let")] } } };
+    if (params.functionDeclaration.startsWith("function (index)")) return { result: { objectId: "list" } };
+    return {};
+  };
+  assert.equal((await readMapping(send, 1)).ok, true);
+  const of = (start) => sent.find(([, x]) => x && x.functionDeclaration && x.functionDeclaration.startsWith(start))[1].arguments;
+  assert.deepEqual(of("function (toJSON, index)").at(-1), { objectId: "map" });
+  assert.deepEqual(of("function (index)"), [{ value: 1 }, { objectId: "map" }]);
 });

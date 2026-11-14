@@ -18,6 +18,12 @@
 // at. A let's value is the browser's where it kept it (in a closure the protocol can
 // read); one the browser did not keep is shown as written.
 //
+// Since Quillo 0.8.0 a component does not keep the props object its parent made: it
+// keeps one whose getters remember what they last read once it has left the page
+// (runtime.js's `heldProps`, FEEDBACK55 Q-762), each `get() { ... get.call(p) ... }`
+// with the parent's own getter in its closure. Those are found through the protocol
+// first (`unheld`), and the parent's getter read in their place.
+//
 // This reads compiled code, which Quillo does not promise to keep in this shape: what
 // does not match is said as such (`inside`: made inside the parent's markup, by a view
 // or a block, under a name the compiled code does not keep), not guessed.
@@ -126,6 +132,9 @@ const PAGE = `function (toJSON, index) {
   ${depths.toString()}
   ${declarations.toString()}
   ${reads.toString()}
+  // The parent's getter behind each held one (see \`unheld\`), when there are any.
+  const held = arguments[2] || null;
+  const own = (g) => (held && held.get(g)) || g;
   const ISL = "quillo-island,[data-qi]";
   const islands = [...document.querySelectorAll(ISL)];
   const live = this.filter((i) => !i.dead && i.el && i.el.isConnected);
@@ -167,7 +176,7 @@ const PAGE = `function (toJSON, index) {
     }
     const up = outer(i);
     if (!up) return [{ kind: "unknown", name: p }];
-    return refsIn(up, String(desc.get), depth);
+    return refsIn(up, String(own(desc.get)), depth);
   };
   const i = at(islands[index]);
   if (!i) return null;
@@ -194,6 +203,7 @@ const PAGE = `function (toJSON, index) {
 // The functions made in the component's code that the browser keeps: what leads to
 // the values of its plain lets, through their closure.
 const CLOSURES = `function (index) {
+  const held = arguments[1] || null;
   const ISL = "quillo-island,[data-qi]";
   const el = document.querySelectorAll(ISL)[index];
   const i = this.find((x) => !x.dead && x.el === el);
@@ -201,15 +211,15 @@ const CLOSURES = `function (index) {
   const out = [];
   for (const c of i.owned || []) if (c && typeof c.fn === "function") out.push(c.fn);
   for (const k of this.filter((x) => !x.dead && x.el && x.el.isConnected && x.el.parentElement && x.el.parentElement.closest(ISL) === el)) {
-    for (const p of Object.keys(k.props || {})) { const g = Object.getOwnPropertyDescriptor(k.props, p).get; if (g) out.push(g); }
+    for (const p of Object.keys(k.props || {})) { const g = Object.getOwnPropertyDescriptor(k.props, p).get; if (g) out.push((held && held.get(g)) || g); }
   }
   return out.slice(0, 24);
 }`;
 
 // The values the closures hold for `names` (compiled names), as wire JSON text.
-async function kept(send, rt, index, names) {
+async function kept(send, rt, index, names, held) {
   const found = {};
-  const list = await send("Runtime.callFunctionOn", { objectId: rt.all, arguments: [{ value: index }], functionDeclaration: CLOSURES, objectGroup: GROUP });
+  const list = await send("Runtime.callFunctionOn", { objectId: rt.all, arguments: [{ value: index }, arg(held)], functionDeclaration: CLOSURES, objectGroup: GROUP });
   const items = await send("Runtime.getProperties", { objectId: list.result.objectId, ownProperties: true });
   const fns = (items.result || []).filter((x) => /^\d+$/.test(x.name) && x.value && x.value.objectId).map((x) => x.value.objectId);
   const seen = new Set();
@@ -247,18 +257,71 @@ async function kept(send, rt, index, names) {
   return out;
 }
 
+// The getters of the props of the component in island `index`, of those around it and of
+// those just inside it, that are not the ones its parent's code made: since Quillo 0.8.0,
+// `heldProps`'s `get() { ... }`. A compiled one is named: `get "value"() { ... }`.
+const HELD = `function (picked) {
+  const ISL = "quillo-island,[data-qi]";
+  const el = document.querySelectorAll(ISL)[picked];
+  const live = this.filter((x) => !x.dead && x.el && x.el.isConnected);
+  const at = (e) => live.find((x) => x.el === e) || null;
+  const out = [];
+  const add = (i) => {
+    for (const p of Object.keys(i.props || {})) {
+      const g = Object.getOwnPropertyDescriptor(i.props, p).get;
+      if (g && /^get\\s*\\(/.test(String(g)) && !out.includes(g)) out.push(g);
+    }
+  };
+  for (let e = el, n = 0; e && n < 10; e = e.parentElement && e.parentElement.closest(ISL), n++) { const i = at(e); if (i) add(i); }
+  for (const k of live) if (el && k.el.parentElement && k.el.parentElement.closest(ISL) === el) add(k);
+  return out;
+}`;
+
+// A named getter: one a component's compiled code made (`get "value"() { ... }`).
+export const compiledGetter = (description) => /^get(?:\s*["'[]|\s+[\w$]+\s*\()/.test(String(description || ""));
+
+// The held getters around the component in island `index` and the parent's getter
+// each holds in its closure, as a Map in the page (its objectId), or null when there
+// are none (Quillo before 0.8.0) or none could be read.
+export async function unheld(send, rt, index) {
+  const list = await send("Runtime.callFunctionOn", { objectId: rt.all, arguments: [{ value: index }], functionDeclaration: HELD, objectGroup: GROUP });
+  if (!list.result || !list.result.objectId) return null;
+  const items = await send("Runtime.getProperties", { objectId: list.result.objectId, ownProperties: true });
+  const getters = (items.result || []).filter((x) => /^\d+$/.test(x.name) && x.value && x.value.objectId).map((x) => x.value.objectId);
+  if (!getters.length) return null;
+  const inner = [];
+  for (const g of getters) {
+    let got = null;
+    const props = await send("Runtime.getProperties", { objectId: g, ownProperties: false });
+    const scopes = (props.internalProperties || []).find((p) => p.name === "[[Scopes]]");
+    const list2 = scopes ? await send("Runtime.getProperties", { objectId: scopes.value.objectId, ownProperties: true }) : {};
+    // The innermost scope first: the one `heldProps` made for this prop.
+    for (const s of (list2.result || []).filter((x) => /^\d+$/.test(x.name) && x.value && x.value.objectId && !/^Global/.test(x.value.description || ""))) {
+      const vars = await send("Runtime.getProperties", { objectId: s.value.objectId, ownProperties: true });
+      const v = (vars.result || []).find((x) => x.value && x.value.type === "function" && x.value.objectId && compiledGetter(x.value.description));
+      if (v) { got = v.value.objectId; break; }
+    }
+    inner.push(got);
+  }
+  if (!inner.some(Boolean)) return null;
+  const map = await send("Runtime.callFunctionOn", { objectId: list.result.objectId, arguments: inner.map(arg), objectGroup: GROUP,
+    functionDeclaration: "function (...gs) { const m = new Map(); this.forEach((w, n) => { if (gs[n]) m.set(w, gs[n]); }); return m; }" });
+  return map.result && map.result.objectId || null;
+}
+
 // The picked component in island `index`: { ok, name, props, vars }, or { ok: false, why }.
 export async function readMapping(send, index) {
   try {
     const rt = await runtime(send);
     if (!rt.ok) return rt;
-    const r = await send("Runtime.callFunctionOn", { objectId: rt.all, arguments: [arg(rt.found.toJSON), { value: index }], returnByValue: true, objectGroup: GROUP, functionDeclaration: PAGE });
+    const held = await unheld(send, rt, index);
+    const r = await send("Runtime.callFunctionOn", { objectId: rt.all, arguments: [arg(rt.found.toJSON), { value: index }, arg(held)], returnByValue: true, objectGroup: GROUP, functionDeclaration: PAGE });
     if (r.exceptionDetails) return { ok: false, why: r.exceptionDetails.exception ? r.exceptionDetails.exception.description : r.exceptionDetails.text };
     const m = r.result.value;
     if (!m) return { ok: false, why: "no component there any more" };
     const want = m.vars.filter((v) => v.kind === "let").map((v) => v.compiled);
     if (want.length) {
-      const values = await kept(send, rt, index, want);
+      const values = await kept(send, rt, index, want, held);
       for (const v of m.vars) if (v.compiled in values) { v.value = values[v.compiled]; v.kept = true; }
       // A let that a derived let reads, its value the same.
       for (const v of m.vars) for (const r of v.reads) if (r.owner === index && r.compiled in values) r.value = values[r.compiled];

@@ -5,8 +5,8 @@ A **Quillo** panel in the browser's developer tools, for pages made by
 the server fn calls the page makes, live updates, the errors Quillo catches, and the
 server's health and query times.
 
-Test coverage: **100.00% of lines** (1,201 of 1,201 in `extension/`), by 32 unit tests
-in Node and 24 tests in Chrome on a Quillo app. See [Tests](#tests).
+Test coverage: **99.68% of lines** (1,246 of 1,250 in `extension/`), by 35 unit tests
+in Node and 24 tests in Chrome on a Quillo app (Quillo 0.8.2). See [Tests](#tests).
 
 | Tab | What it shows |
 |---|---|
@@ -55,7 +55,10 @@ shows from outside:
   its prop `title`), followed up to the state or let it ends at. A let's value is the
   browser's where it keeps it (in a closure); one it did not keep (used once, when the
   component was made) is shown as written. Something made inside the parent's markup by
-  a view or a block has no name left in the compiled code, and is said so.
+  a view or a block has no name left in the compiled code, and is said so. Since Quillo
+  0.8.0 a component keeps its own getter for each such prop (one that remembers what it
+  last read once the component has left the page), with the parent's in its closure: the
+  panel reads the parent's there, through the debugger.
 - **A component nothing can change** (no handler, live state or timer) is let go by the
   browser once it is on the page: with **Current state** on, the panel says so, and
   shows what the server rendered, which is what the page keeps showing.
@@ -94,9 +97,11 @@ real `chrome.debugger`, and checks each tab. A screenshot of each goes in `tests
 
 `coverage` runs both with V8's coverage on, in Node and in Chrome, and counts the lines of
 `extension/` that ran, from [scripts/coverage.mjs](scripts/coverage.mjs). The figure above
-is from a build of Quillo's main branch (54dd1bd). On the 0.6.0 release the query-time
+is from Quillo 0.8.2 (d32f5a0). On the 0.6.0 release the query-time
 table is not drawn (0.6.0 has no `/_quillo/health/queries`), so a few lines of the panel
-are not run there.
+are not run there. Since Quillo 0.8.0 `/_quillo/ready` lists its checks only to a
+request with the health token, which the panel does not send, so the four lines that draw
+them are not run on 0.8 (the figure above).
 
 CI ([.github/workflows/check.yml](.github/workflows/check.yml)) runs both suites on each
 Quillo release the extension supports, and keeps the screenshots and the packaged zip.

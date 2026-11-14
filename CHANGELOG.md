@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1
+
+- **Where props come from, on Quillo 0.8.** Since Quillo 0.8.0 a component keeps its own
+  getter for each prop its parent passes (one that remembers what it last read once the
+  component has left the page, Quillo's Q-762), so the panel read nothing after "←" for a
+  prop from a state, a let or the parent's prop. It now finds the parent's getter in that
+  getter's closure, through the debugger, and maps it as before; pages from older Quillo
+  read as they did.
+- Tested on Quillo 0.8.2 and 0.8.1 (89a91c2), in production and under
+  `--watch`: 35 unit tests and 24 in Chrome. 99.68% of lines: the Server tab's readiness
+  checks are not drawn on 0.8, whose `/_quillo/ready` lists them only to a request with
+  the health token.
+
 ## 0.2.0
 
 - **Where props come from.** With Current state on, each prop of the picked component
