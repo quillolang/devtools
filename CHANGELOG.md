@@ -1,7 +1,7 @@
 # Changelog
 
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-16)
 
 - Quillo's HMR (Quillo FEEDBACK54.md, on its `hmr` branch): the Live tab says what each save did
   to the page, from the `quillo:hmr` event the page now sends: **kept** (nothing it uses changed)
