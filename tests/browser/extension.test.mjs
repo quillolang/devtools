@@ -30,6 +30,10 @@ const OUT = join(here, "..", "out");
 const NAME = "Quillo DevTools";
 
 const skip = !findChrome() ? "no Chrome (set CHROME)" : !quilloVersion() ? "no quillo (set QUILLO_BIN)" : false;
+// Since Quillo 0.8.5, under --watch, the runtime keeps each island's component, a still one too,
+// so that a save can swap it in place with its states (its HMR, FEEDBACK54.md, A.2); in
+// production, and before, one that nothing can change is let go once taken up.
+const keepsAll = (watch) => watch && !/^quillo 0\.([0-7]\.|8\.[0-4] )/.test(quilloVersion());
 
 // The production run's health token (16 characters at least).
 const TOKEN = "devtools-test-token-0123456789";
@@ -221,10 +225,15 @@ for (const watch of [false, true]) {
       assert.equal(JSON.parse(alone.vars.find((v) => v.name === "shout").value), "parent!");
       const pattern = Object.fromEntries((await readMapping(send, 7)).vars.map((v) => [v.name, [v.kind, v.value, v.kept || false]]));
       assert.deepEqual(pattern, { a: ["state", "1", false], count: ["derived", "3", false], p: ["let", null, false], q: ["let", null, false], tags: ["let", '["x","y"]', true] });
-      // A component nothing can change: taken up, and its code let go.
+      // A component nothing can change: taken up, and its code let go (kept under --watch since
+      // Quillo 0.8.5, for a save to swap it: the test changed for that).
       assert.equal(s.islands[8].resumed, true);
-      assert.deepEqual(await readMapping(send, 8), { ok: false, why: "no component there any more" });
-      assert.equal((await readState(send)).components.some((c) => c.name === "Still"), false);
+      if (keepsAll(watch)) {
+        assert.deepEqual((await readMapping(send, 8)).vars.map((v) => [v.name, v.value]), [["s", "1"]]);
+      } else {
+        assert.deepEqual(await readMapping(send, 8), { ok: false, why: "no component there any more" });
+        assert.equal((await readState(send)).components.some((c) => c.name === "Still"), false);
+      }
       // Counter: props the server wrote, a live state; a handler's own let is not the component's.
       const counter = await readMapping((m, p) => page.send(m, p), 0);
       assert.deepEqual(counter.props.map((p) => p.from[0].kind), ["server", "server"]);
@@ -389,7 +398,8 @@ for (const watch of [false, true]) {
       await until(async () => /tagslet \["x", "y"\]/.test(await detail()), 5000, "the kept list");
       assert.match(await detail(), /plet worked out once when it was made: the browser did not keep it/);
       await pickNth("Still");
-      await until(async () => /the browser let its code go/.test(await detail()), 5000, "the let-go component");
+      if (keepsAll(watch)) await until(async () => /State and letss/.test(await detail()), 5000, "the kept component");
+      else await until(async () => /the browser let its code go/.test(await detail()), 5000, "the let-go component");
       await pickNth("Grand");
       await until(async () => /PropsNone\./.test(await detail()), 5000, "no props");
       await pickNth("Leaf", 0);
