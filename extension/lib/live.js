@@ -8,7 +8,8 @@
 //                    ["l", name] leaves, ["m", name, value] a message; the server's
 //                    ["j", name, true|false] lets the page in or not; binary frames are media
 //   /_quillo/events  --watch: the program's version; at a new one the page asks for itself
-//                    again and is kept as it is, or reloaded (what it decided comes as a
+//                    again and is kept as it is, has its changed components swapped in place,
+//                    or is reloaded (what it decided comes as a
 //                    "quillo:hmr" event: `hmr` below); "css:<n>:<paths>" swaps stylesheets in
 //                    place; "err:<n>:<json>" is a save that did not load (null once one does)
 
@@ -29,6 +30,7 @@ const WHY = {
 function hmr(e) {
   const base = { at: e.at, socket: "", path: "/_quillo/events", dir: "" };
   if (e.what === "kept") return { ...base, what: "kept", detail: `version ${e.version}: nothing the page uses changed, so it was not reloaded` };
+  if (e.what === "swapped") return { ...base, what: "swapped", detail: `version ${e.version}: ${e.why || "its code"} swapped in place, its states kept` };
   return { ...base, what: "reloads", detail: `version ${e.version}: ${WHY[e.why] || e.why || "a change"}` };
 }
 
