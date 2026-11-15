@@ -483,10 +483,12 @@ async function drain() {
   let more = false;
   for (const e of r.value.events) {
     if (e.kind === "error") { S.errors.push({ at: e.at, message: e.message }); more = true; }
-    if (e.kind.startsWith("ws-")) {
+    if (e.kind.startsWith("ws-") || e.kind === "hmr") {
       const d = describe(e);
       if (d.what === "follows") S.follows = d.topics;
       S.live.push(d);
+      // A save that did not load is an error of the program's too (Quillo's HMR, FEEDBACK54.md).
+      if (d.failed) S.errors.push({ at: d.at, message: `A save did not load (the page shows the version before it): ${d.failed}` });
       more = true;
     }
   }

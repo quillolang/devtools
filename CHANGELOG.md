@@ -1,5 +1,19 @@
 # Changelog
 
+
+## 0.3.0 (unreleased)
+
+- Quillo's HMR (Quillo FEEDBACK54.md, on its `hmr` branch): the Live tab says what each save did
+  to the page, from the `quillo:hmr` event the page now sends: **kept** (nothing it uses changed)
+  or **reloads**, and why (its HTML or its code changed, it asks to be reloaded, or the check
+  could not be made). A new version is "new version", no longer "reload".
+- A save that does not load (`err:` on `/_quillo/events`) is "save failed" in the Live tab, with
+  the first line of what it said, and in the Errors tab whole; "save loads" when one loads after.
+- Tests: the unit tests read the new messages; a browser test, with an app of its own under
+  `--watch`, saves a route the page does not use (kept), a broken file (failed) and the fix
+  (loads again, the overlay gone), skipped on a Quillo before HMR. 25 browser and 36 unit tests
+  pass on the HMR build (24 and 36 on 0.8.4); coverage 100% (1,304 lines).
+
 ## 0.2.2
 
 - **Quillo 0.8.3's plain pages.** Since Quillo 0.8.3 a page with no link, script or component

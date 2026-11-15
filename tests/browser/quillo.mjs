@@ -45,6 +45,7 @@ export async function start({ watch = false, describe = false, args: extra = [],
   }
   return {
     url,
+    dir,
     get log() { return log; },
     stop() {
       proc.kill();

@@ -13,7 +13,7 @@
 
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -425,6 +425,44 @@ for (const watch of [false, true]) {
     });
   });
 }
+
+// Quillo's HMR, with an app and a browser of its own: its saves would reload the other tests'
+// page, whose HTML the data they change has moved on from.
+describe("saves under --watch", { skip }, () => {
+  let app, chrome;
+  before(async () => {
+    app = await start({ watch: true });
+    chrome = await launch({ extension: EXT });
+  });
+  after(async () => { if (chrome) await chrome.close(); if (app) app.stop(); });
+
+    // Quillo's HMR (FEEDBACK54.md): a save the page does not use leaves it as it is, and the page
+    // says so ("hmr"); a save that does not load comes as "err:" (a failed save), and the one
+    // that fixes it after. On /plain, in a tab of its own: its HTML is the same whatever the
+    // data, which the other tests change (the main page is compared as it was first made).
+    test("saves are heard: kept, failed, and loaded again", async (t) => {
+      if (!(await (await fetch(app.url + "/")).text()).includes("quillo:hmr")) return t.skip("Quillo before HMR");
+      const page = await chrome.page(app.url + "/plain");
+      await until(() => heard(page).then((x) => x.events.some((e) => e.kind === "ws-open" && e.path === "/_quillo/events")), 5000, "the events socket");
+      const main = join(app.dir, "main.qwe");
+      const src = readFileSync(main, "utf8");
+      const lines = async (after, want) => until(async () => { const x = await heard(page, after); const ls = x.events.filter((e) => e.kind === "hmr" || (e.kind === "ws-in" && e.path === "/_quillo/events")).map(describeFrame); return ls.some((l) => l.what === want) && ls; }, 8000, want);
+      let at = (await heard(page)).last;
+      writeFileSync(main, src + '\nroute GET /devtools-probe = "a"\n');
+      const kept = (await lines(at, "kept")).find((l) => l.what === "kept");
+      assert.match(kept.detail, /^version \d+: nothing the page uses changed/);
+      at = (await heard(page)).last;
+      writeFileSync(main, src + "\nroute GET /devtools-probe = nope\n");
+      const failed = (await lines(at, "save failed")).find((l) => l.what === "save failed");
+      assert.match(failed.failed, /nope/);
+      at = (await heard(page)).last;
+      writeFileSync(main, src);
+      const back = await lines(at, "kept");
+      assert.ok(back.some((l) => l.what === "save loads" || l.what === "new version"), JSON.stringify(back));
+      assert.equal(await page.evaluate("!!document.querySelector('quillo-error')"), false, "the overlay went with the save that loaded");
+      assert.equal(await page.evaluate("document.readyState"), "complete");
+    });
+});
 
 async function shot(p, name) {
   mkdirSync(OUT, { recursive: true });

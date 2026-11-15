@@ -21,9 +21,16 @@ test("the live socket: what it follows, and what changed", () => {
   assert.equal(describe(ev("ws-close", "/_quillo/live", { code: 1006 })).detail, "code 1006");
 });
 
-test("--watch's socket: reloads and stylesheets", () => {
+// Changed with Quillo's HMR (FEEDBACK54.md): a new version no longer means a reload; the page
+// says what it did ("hmr").
+test("--watch's socket: versions, stylesheets and saves that did not load", () => {
   assert.equal(describe(ev("ws-open", "/_quillo/events")).what, "watching");
-  assert.deepEqual([describe(ev("ws-in", "/_quillo/events", { data: "7" })).what, describe(ev("ws-in", "/_quillo/events", { data: "7" })).detail], ["reload", "version 7"]);
+  assert.deepEqual([describe(ev("ws-in", "/_quillo/events", { data: "7" })).what, describe(ev("ws-in", "/_quillo/events", { data: "7" })).detail], ["new version", "version 7"]);
+  const failed = describe(ev("ws-in", "/_quillo/events", { data: 'err:2:"main.qwe:3: unknown name `nope`\\nmore"' }));
+  assert.deepEqual([failed.what, failed.detail, failed.failed], ["save failed", "main.qwe:3: unknown name `nope`", "main.qwe:3: unknown name `nope`\nmore"]);
+  const fixed = describe(ev("ws-in", "/_quillo/events", { data: "err:3:null" }));
+  assert.deepEqual([fixed.what, fixed.failed], ["save loads", undefined]);
+  assert.equal(describe(ev("ws-in", "/_quillo/events", { data: "err:4:{bad" })).what, "save loads");
   const css = describe(ev("ws-in", "/_quillo/events", { data: 'css:3:["/app.css"]' }));
   assert.equal(css.what, "styles");
   assert.equal(css.detail, '["/app.css"]');
@@ -42,4 +49,12 @@ test("channels over a WebSocket", () => {
   assert.equal(describe(ev("ws-in", "/_quillo/wt", { data: "(12 bytes)" })).what, "frame");
   assert.equal(describe(ev("ws-in", "/_quillo/wt", { data: '["z","x"]' })).what, "frame");
   assert.equal(describe(ev("ws-in", undefined, {})).what, "frame");
+});
+
+test("what the page decided after a save", () => {
+  const kept = describe({ kind: "hmr", at: 5, what: "kept", why: "", version: "8" });
+  assert.deepEqual([kept.what, kept.path, kept.detail], ["kept", "/_quillo/events", "version 8: nothing the page uses changed, so it was not reloaded"]);
+  for (const [why, said] of [["html", "its HTML changed"], ["code", "its code changed"], ["failed", "the check could not be made"], ["off", "it asks to be reloaded (--watch=reload, data-reload or QW.hot = false)"], ["later", "later"], ["", "a change"]]) {
+    assert.equal(describe({ kind: "hmr", at: 5, what: "reload", why, version: "9" }).detail, `version 9: ${said}`);
+  }
 });

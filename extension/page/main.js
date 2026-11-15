@@ -7,7 +7,10 @@
 //   onto `window.__quilloErrors` "if the page made that list", so on a Quillo page
 //   this makes it, as a list whose push also says so;
 // - what Quillo's own WebSockets carry (/_quillo/live, /_quillo/wt, /_quillo/events),
-//   by a WebSocket that is the browser's, watched. Any other socket is left alone.
+//   by a WebSocket that is the browser's, watched. Any other socket is left alone;
+// - what --watch's page script decides after a save (since Quillo's HMR, FEEDBACK54.md):
+//   a "quillo:hmr" event on the document, its detail JSON { what: "kept" | "reload", why,
+//   version }.
 //
 // Nothing else is put on the page: no global of this extension's own.
 (() => {
@@ -44,6 +47,13 @@
       },
     });
   }
+
+  // What a save did to the page: kept as it is, or reloaded, and why.
+  document.addEventListener("quillo:hmr", (e) => {
+    let d;
+    try { d = JSON.parse(e.detail); } catch (_) { return; }
+    if (d && typeof d === "object") say("hmr", { what: String(d.what), why: String(d.why || ""), version: String(d.version || "") });
+  });
 
   // The error list, only on a page of Quillo's: made when the document is parsed,
   // which is before Quillo's bundle comes (its loader waits for the same moment, and
