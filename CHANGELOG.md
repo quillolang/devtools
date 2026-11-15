@@ -5,7 +5,7 @@
 
 - Quillo's HMR (Quillo FEEDBACK54.md, on its `hmr` branch): the Live tab says what each save did
   to the page, from the `quillo:hmr` event the page now sends: **kept** (nothing it uses changed)
-  or **swapped** (its changed components swapped in place, their states kept), or **reloads**, and why (its HTML or its code changed, it asks to be reloaded, or the check
+  or **swapped** (its changed components swapped in place, their states kept), or **morphed** (its own HTML put in place, its components kept), or **reloads**, and why (its HTML or its code changed, it asks to be reloaded, or the check
   could not be made). A new version is "new version", no longer "reload".
 - A save that does not load (`err:` on `/_quillo/events`) is "save failed" in the Live tab, with
   the first line of what it said, and in the Errors tab whole; "save loads" when one loads after.

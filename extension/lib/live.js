@@ -31,6 +31,7 @@ function hmr(e) {
   const base = { at: e.at, socket: "", path: "/_quillo/events", dir: "" };
   if (e.what === "kept") return { ...base, what: "kept", detail: `version ${e.version}: nothing the page uses changed, so it was not reloaded` };
   if (e.what === "swapped") return { ...base, what: "swapped", detail: `version ${e.version}: ${e.why || "its code"} swapped in place, its states kept` };
+  if (e.what === "morphed") return { ...base, what: "morphed", detail: `version ${e.version}: the page's own HTML put in place, its components kept` };
   return { ...base, what: "reloads", detail: `version ${e.version}: ${WHY[e.why] || e.why || "a change"}` };
 }
 

@@ -54,6 +54,7 @@ test("channels over a WebSocket", () => {
 test("what the page decided after a save", () => {
   const kept = describe({ kind: "hmr", at: 5, what: "kept", why: "", version: "8" });
   assert.deepEqual([kept.what, kept.path, kept.detail], ["kept", "/_quillo/events", "version 8: nothing the page uses changed, so it was not reloaded"]);
+  assert.equal(describe({ kind: "hmr", at: 5, what: "morphed", why: "", version: "8" }).detail, "version 8: the page's own HTML put in place, its components kept");
   const swapped = describe({ kind: "hmr", at: 5, what: "swapped", why: "main.qwe/Count.js", version: "8" });
   assert.deepEqual([swapped.what, swapped.detail], ["swapped", "version 8: main.qwe/Count.js swapped in place, its states kept"]);
   assert.equal(describe({ kind: "hmr", at: 5, what: "swapped", why: "", version: "8" }).detail, "version 8: its code swapped in place, its states kept");
