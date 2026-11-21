@@ -19,7 +19,7 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     env:
-      QUILLO: v0.8.9
+      QUILLO: v0.8.10
       CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
       CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
       CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
